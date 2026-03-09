@@ -1,0 +1,29 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21 },
+  "configurePresets": [
+    {
+      "name": "mingw-debug",
+      "displayName": "MinGW - Debug",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT}/lib/cmake",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}"
+      }
+    },
+    {
+      "name": "mingw-release",
+      "displayName": "MinGW - Release",
+      "inherits": "mingw-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "mingw-debug" },
+    { "name": "release", "configurePreset": "mingw-release" }
+  ]
+}

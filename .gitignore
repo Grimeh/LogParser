@@ -1,0 +1,7 @@
+build/
+install/
+CMakeFiles/
+.vscode/
+CMakeCache.txt
+*.user
+*.sw[a-p]
