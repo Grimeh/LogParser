@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.21)
-
 project(MyLogReader LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -11,6 +10,8 @@ qt_standard_project_setup()
 
 qt_add_executable(my_log_reader
     src/main.cpp
+    src/app/MainWindow.cpp
+    src/app/MainWindow.h
 )
 
 # Link Qt Widgets to your executable
