@@ -12,10 +12,19 @@ qt_add_executable(my_log_reader
     src/main.cpp
     src/app/MainWindow.cpp
     src/app/MainWindow.h
+    src/app/PlusTabBar.cpp
+    src/app/PlusTabBar.h
+    src/app/TabsWidget.cpp
+    src/app/TabsWidget.h
+    src/ui/LogReaderTab.cpp
+    src/ui/LogReaderTab.h
 )
 
 # Link Qt Widgets to your executable
 target_link_libraries(my_log_reader PRIVATE Qt6::Widgets)
+
+# Add folder
+target_include_directories(my_log_reader PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # Install
 install(TARGETS my_log_reader
