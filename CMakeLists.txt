@@ -18,6 +18,8 @@ qt_add_executable(my_log_reader
     src/app/TabsWidget.h
     src/ui/LogReaderTab.cpp
     src/ui/LogReaderTab.h
+    src/core/LogTailer.cpp
+    src/core/LogTailer.h
 )
 
 # Link Qt Widgets to your executable

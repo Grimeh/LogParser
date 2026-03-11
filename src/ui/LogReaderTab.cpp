@@ -1,4 +1,5 @@
 #include "LogReaderTab.h"
+#include "core/LogTailer.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -28,6 +29,15 @@ LogReaderTab::LogReaderTab(QWidget* parent)
     buildStatus(this);
 
     setStatus("Ready");
+}
+
+LogReaderTab::~LogReaderTab() {
+    if (m_tailer) {
+        m_tailer->stop();
+        m_tailer->wait(2000);
+        m_tailer->deleteLater();
+        m_tailer = nullptr;
+    }
 }
 
 void LogReaderTab::buildHeaderRows(QWidget* parent) {
@@ -102,6 +112,8 @@ void LogReaderTab::buildHeaderRows(QWidget* parent) {
         row->addWidget(m_reloadBtn);
         row->addStretch(1);
         static_cast<QVBoxLayout*>(layout())->addLayout(row);
+
+        m_stopBtn->setEnabled(false);
     }
 }
 
@@ -162,11 +174,41 @@ void LogReaderTab::onApplyFormat() {
 }
 
 void LogReaderTab::onStart() {
-    setStatus("Start clicked");
+    if (m_tailer) {
+        setStatus("Already running.");
+        return;
+    }
+    const QString path = m_pathEdit->text().trimmed();
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        setStatus("Please select an existing log file.");
+        return;
+    }
+
+    // Start tailing
+    m_tailer = new LogTailer(path, /*pollMillis*/200, this);
+    connect(m_tailer, &LogTailer::newLine,   this, &LogReaderTab::onTailNewLine);
+    connect(m_tailer, &LogTailer::fileError, this, &LogReaderTab::onTailFileError);
+    m_tailer->start();
+
+    m_startBtn->setEnabled(false);
+    m_stopBtn->setEnabled(true);
+    setStatus(QStringLiteral("Tailing: %1").arg(path));
 }
 
 void LogReaderTab::onStop() {
-    setStatus("Stop clicked.");
+    if (!m_tailer) {
+        setStatus("Not running.");
+        return;
+    }
+    m_tailer->stop();
+    m_tailer->wait(2000);
+    m_tailer->deleteLater();
+    m_tailer = nullptr;
+
+    m_startBtn->setEnabled(true);
+    m_stopBtn->setEnabled(false);
+    setStatus("Stopped.");
+
 }
 
 void LogReaderTab::onClear() {
@@ -176,11 +218,61 @@ void LogReaderTab::onClear() {
 }
 
 void LogReaderTab::onReloadAll() {
-    setStatus("Reload All clicked");
+    const QString path = m_pathEdit->text().trimmed();
+    if (path.isEmpty() || !QFileInfo(path).isFile()) {
+        setStatus(QStringLiteral("No such file: %1").arg(path.isEmpty() ? "<empty>" : path));
+        return;
+    }
+
+    // Stop if running
+    if (m_tailer) {
+        onStop();
+    }
+
+    auto* model = qobject_cast<QStandardItemModel*>(m_table->model());
+    if (!model) return;
+
+    model->removeRows(0, model->rowCount());
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        setStatus(QStringLiteral("Failed to open: %1").arg(path));
+        return;
+    }
+    QTextStream in(&f);
+    in.setEncoding(QStringConverter::Utf8);
+
+    int count = 0;
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        if (line.isNull()) break;
+        QList<QStandardItem*> row;
+        row << new QStandardItem(line);
+        model->appendRow(row);
+        ++count;
+    }
+    f.close();
+
+    setStatus(QStringLiteral("Loaded %1 lines from file.").arg(count));
 }
 
 void LogReaderTab::onPathTextChanged(const QString& text) {
     QFileInfo fi(text.trimmed());
     const QString base = fi.fileName().isEmpty() ? QStringLiteral("Untitled") : fi.fileName();
     emit pathChanged(base);
+}
+
+void LogReaderTab::onTailNewLine(const QString &line) {
+    auto* model = qobject_cast<QStandardItemModel*>(m_table->model());
+    if (!model) return;
+
+    QList<QStandardItem*> row;
+    const QString trimmed = (line.endsWith('\n') ? line.left(line.size()-1) : line);
+    row << new QStandardItem(trimmed);
+    model->appendRow(row);
+}
+
+void LogReaderTab::onTailFileError(const QString& msg) {
+    setStatus(QStringLiteral("Tail error: %1").arg(msg));
+
 }

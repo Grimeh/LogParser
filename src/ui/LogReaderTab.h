@@ -7,10 +7,13 @@ class QComboBox;
 class QTableView;
 class QLabel;
 
+class LogTailer;
+
 class LogReaderTab : public QWidget {
     Q_OBJECT
 public:
     explicit LogReaderTab(QWidget* parent = nullptr);
+    ~LogReaderTab() override;
 
 signals:
     void pathChanged(const QString& baseName);
@@ -39,6 +42,9 @@ private:
     // status
     QLabel* m_status{};
 
+    // LogTailer
+    LogTailer* m_tailer{};
+
 private slots:
     void onBrowse();
     void onApplyFormat();
@@ -47,6 +53,8 @@ private slots:
     void onClear();
     void onReloadAll();
     void onPathTextChanged(const QString& text);
+    void onTailNewLine(const QString& line);
+    void onTailFileError(const QString& msg);
 
 private:
     void buildHeaderRows(QWidget* parent);
