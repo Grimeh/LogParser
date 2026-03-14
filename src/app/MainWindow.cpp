@@ -4,6 +4,7 @@
 #include "ui/LogReaderTab.h"
 
 #include <QStatusBar>
+#include <iostream>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -39,6 +40,9 @@ void MainWindow::closeTab(int index) {
 }
 
 void MainWindow::onCurrentTabChanged(int index) {
+    if (m_lastActive >= 0) {
+        static_cast<LogReaderTab*>(m_tabs->widget(m_lastActive))->updateLastSeenRow();
+    }
     m_lastActive = index;
 }
 

@@ -41,7 +41,6 @@ int main(int argc, char* argv[]) {
 
     QApplication app(argc, argv);
     applyDarkPalette(app);
-    qInfo("Hello, world!");
 
     MainWindow w;
     w.resize(1000, 700);

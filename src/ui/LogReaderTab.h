@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include "core/LogParser.h"
 
 class QLineEdit;
 class QPushButton;
@@ -8,12 +9,16 @@ class QTableView;
 class QLabel;
 
 class LogTailer;
+class QSortFilterProxyModel;
+class LogTableModel;
 
 class LogReaderTab : public QWidget {
     Q_OBJECT
 public:
     explicit LogReaderTab(QWidget* parent = nullptr);
     ~LogReaderTab() override;
+
+    void updateLastSeenRow();
 
 signals:
     void pathChanged(const QString& baseName);
@@ -45,6 +50,14 @@ private:
     // LogTailer
     LogTailer* m_tailer{};
 
+    // Model and proxy
+    LogTableModel*         m_model{};
+    QSortFilterProxyModel* m_proxy{};
+
+    // parsing state
+    LogParser::ParseResult m_compiled;
+    QString                m_datefmtQt = QStringLiteral("yyyy-MM-dd HH:mm:ss");
+
 private slots:
     void onBrowse();
     void onApplyFormat();
@@ -62,4 +75,7 @@ private:
     void buildFiltersPanel(QWidget* parent);
     void buildStatus(QWidget* parent);
     void setStatus(const QString& text);
+    void rebuildModelCols(const QStringList& cols);
+    QDateTime parseAsctimeQt(const QString& s) const;
+    void parseAndAddRow(const QString& raw) const;
 };

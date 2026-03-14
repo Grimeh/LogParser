@@ -1,11 +1,13 @@
 #include "LogReaderTab.h"
 #include "core/LogTailer.h"
+#include "core/LogTableModel.h"
+#include "ui/FirstNewRowDelegate.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
 #include <QGridLayout>
-
+#include <QtLogging>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QComboBox>
@@ -15,6 +17,7 @@
 #include <QFileDialog>
 #include <QLabel>
 #include <QFileInfo>
+#include <QSortFilterProxyModel>
 
 LogReaderTab::LogReaderTab(QWidget* parent)
     : QWidget(parent)
@@ -28,6 +31,8 @@ LogReaderTab::LogReaderTab(QWidget* parent)
     buildFiltersPanel(this);
     buildStatus(this);
 
+    m_compiled = LogParser::compileFormatToRegex("%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s");
+
     setStatus("Ready");
 }
 
@@ -38,6 +43,10 @@ LogReaderTab::~LogReaderTab() {
         m_tailer->deleteLater();
         m_tailer = nullptr;
     }
+}
+
+void LogReaderTab::updateLastSeenRow() {
+    m_model->setLastSeenRow(m_model->rowCount() - 1);
 }
 
 void LogReaderTab::buildHeaderRows(QWidget* parent) {
@@ -118,19 +127,33 @@ void LogReaderTab::buildHeaderRows(QWidget* parent) {
 }
 
 void LogReaderTab::buildTable(QWidget* parent) {
+    m_model = new LogTableModel(QStringList{"message"}, this);
+    
+    m_proxy = new QSortFilterProxyModel(this);
+    m_proxy->setSourceModel(m_model);
+    m_proxy->setSortCaseSensitivity(Qt::CaseInsensitive);
+    m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+
     m_table = new QTableView(parent);
+    m_table->setModel(m_proxy);
     m_table->setSortingEnabled(true);
     m_table->setSelectionBehavior(QTableView::SelectItems);
     m_table->setSelectionMode(QTableView::ExtendedSelection);
     m_table->verticalHeader()->setVisible(false);
 
-    auto* model = new QStandardItemModel(m_table);
-    model->setHorizontalHeaderLabels({"message"});
-    m_table->setModel(model);
+    auto* delegate = new FirstNewRowDelegate(m_model, m_table);
+    m_table->setItemDelegate(delegate);
 
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_table->horizontalHeader()->setStretchLastSection(true);
 
     static_cast<QVBoxLayout*>(layout())->addWidget(m_table, 1);
+
+    connect(m_table->horizontalHeader(), &QHeaderView::sortIndicatorChanged,
+            this, [delegate](int /*section*/, Qt::SortOrder /*order*/) {
+                delegate->setEnabled(true);
+            });
+
 }
 
 void LogReaderTab::buildFiltersPanel(QWidget* parent) {
@@ -161,6 +184,50 @@ void LogReaderTab::setStatus(const QString& text) {
     if (m_status) m_status->setText(text);
 }
 
+QDateTime LogReaderTab::parseAsctimeQt(const QString &s) const
+{
+    return QDateTime::fromString(s, m_datefmtQt);
+}
+
+void LogReaderTab::parseAndAddRow(const QString &raw) const {
+    auto parsed = LogParser::parseLine(raw, m_compiled);
+    if (!parsed) {
+        // Continuation of previous line => append to previous line
+        QHash<QString, QString> last = m_model->rowDict(m_model->rowCount()-1);
+        if (!last.isEmpty() && LogParser::isTracebackLine(raw, &last)) {
+            m_model->updateLastRowMessage(raw);
+        } else {
+            // keep as message-only row
+            QHash<QString, QString> dict;
+            const QString key = m_model->columns().contains("message")
+                                ? "message" : m_model->columns().isEmpty()
+                                ? "message" : m_model->columns().last();
+            dict.insert(key, raw);
+            m_model->addRow(dict);
+        }
+    } else {
+        // parse asctime if present
+        QDateTime asdt;
+        if (parsed->contains("asctime")) {
+            asdt = parseAsctimeQt(parsed->value("asctime"));
+        }
+        m_model->addRow(*parsed, asdt);
+    }
+}
+
+void LogReaderTab::rebuildModelCols(const QStringList &cols) {
+    m_model->setColumns(cols.isEmpty() ? QStringList{"message"} : cols);
+
+    // Resize: message stretch, others content
+    auto* hdr = m_table->horizontalHeader();
+    for (int i = 0; i < m_model->columnCount(); ++i) {
+        const QString name = m_model->columns()[i];
+        if (name == "message") hdr->setSectionResizeMode(i, QHeaderView::Stretch);
+        else                   hdr->setSectionResizeMode(i, QHeaderView::ResizeToContents);
+
+    }
+}
+
 // ----- Slots -----
 void LogReaderTab::onBrowse() {
     const QString path = QFileDialog::getOpenFileName(this, "Select log file", QString(), "Log files (*.log *.txt);;All files (*)");
@@ -170,8 +237,32 @@ void LogReaderTab::onBrowse() {
 }
 
 void LogReaderTab::onApplyFormat() {
-    setStatus(QString("Mode: %1 | Format applied.").arg(m_modeCombo->currentText()));
+    const QString mode = m_modeCombo->currentText().trimmed();
+    const QString fmt  = m_formatEdit->text().trimmed();
+    if (fmt.isEmpty()) { setStatus("Format empty."); return; }
+
+    LogParser::ParseResult compiled;
+    if (mode == "regex") compiled = LogParser::compileNamedRegex(fmt);
+    else                 compiled = LogParser::compileFormatToRegex(fmt);
+
+    if (!compiled.success) {
+        setStatus(QStringLiteral("Format error: %1").arg(compiled.error));
+        return;
+    }
+    m_compiled = compiled;
+
+    const QString df = m_datefmtEdit->text().trimmed();
+    if (!df.isEmpty()) m_datefmtQt = df;
+
+    rebuildModelCols(m_compiled.columns);
+    setStatus(QStringLiteral("Applied format. Columns: %1")
+              .arg(m_compiled.columns.join(", ")));
+
+    // Prefer sorting by asctime if present
+    const int asCol = m_compiled.columns.indexOf("asctime");
+    if (asCol >= 0) m_table->sortByColumn(asCol, Qt::AscendingOrder);
 }
+
 
 void LogReaderTab::onStart() {
     if (m_tailer) {
@@ -229,10 +320,7 @@ void LogReaderTab::onReloadAll() {
         onStop();
     }
 
-    auto* model = qobject_cast<QStandardItemModel*>(m_table->model());
-    if (!model) return;
-
-    model->removeRows(0, model->rowCount());
+    m_model->clear();
 
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -244,14 +332,19 @@ void LogReaderTab::onReloadAll() {
 
     int count = 0;
     while (!in.atEnd()) {
-        const QString line = in.readLine();
-        if (line.isNull()) break;
-        QList<QStandardItem*> row;
-        row << new QStandardItem(line);
-        model->appendRow(row);
+        const QString raw = in.readLine();
+        if (raw.isNull()) break;
+        parseAndAddRow(raw);
         ++count;
     }
     f.close();
+
+    // After bulk load, mark all as seen
+    updateLastSeenRow();
+
+    // default sort
+    int asCol = m_model->columns().indexOf("asctime");
+    if (asCol >= 0) m_table->sortByColumn(asCol, Qt::AscendingOrder);
 
     setStatus(QStringLiteral("Loaded %1 lines from file.").arg(count));
 }
@@ -263,13 +356,8 @@ void LogReaderTab::onPathTextChanged(const QString& text) {
 }
 
 void LogReaderTab::onTailNewLine(const QString &line) {
-    auto* model = qobject_cast<QStandardItemModel*>(m_table->model());
-    if (!model) return;
-
-    QList<QStandardItem*> row;
-    const QString trimmed = (line.endsWith('\n') ? line.left(line.size()-1) : line);
-    row << new QStandardItem(trimmed);
-    model->appendRow(row);
+    const QString raw = line.endsWith('\n') ? line.chopped(1) : line;
+    parseAndAddRow(raw);
 }
 
 void LogReaderTab::onTailFileError(const QString& msg) {
