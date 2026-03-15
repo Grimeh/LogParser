@@ -26,7 +26,8 @@ qt_add_executable(my_log_reader
     src/core/LogParser.h
     src/core/LogTableModel.cpp
     src/core/LogTableModel.h
-
+    src/core/MultiFilterProxy.cpp
+    src/core/MultiFilterProxy.h
 )
 
 # Link Qt Widgets to your executable

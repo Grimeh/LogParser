@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include <QDateTime>
 #include "core/LogParser.h"
 
 class QLineEdit;
@@ -7,6 +8,9 @@ class QPushButton;
 class QComboBox;
 class QTableView;
 class QLabel;
+class QFormLayout;
+class QCheckBox;
+class QDateTimeEdit;
 
 class LogTailer;
 class QSortFilterProxyModel;
@@ -58,6 +62,26 @@ private:
     LogParser::ParseResult m_compiled;
     QString                m_datefmtQt = QStringLiteral("yyyy-MM-dd HH:mm:ss");
 
+    // filters panel widgets
+    QWidget*     m_columnsContainer{};     // holds form rows for columns
+    QFormLayout* m_columnsForm{};
+    QVector<QCheckBox*> m_showChecks;
+    QVector<QLineEdit*> m_filterEdits;
+
+    // time range
+    QCheckBox*     m_cbUseFrom{};
+    QCheckBox*     m_cbUseTo{};
+    QDateTimeEdit* m_fromDt{};
+    QDateTimeEdit* m_toDt{};
+    QLabel*        m_noTimeNotice{};
+
+    // datetime tracking
+    bool      m_haveAnyDatetime = false;
+    bool      m_userSetFrom = false;
+    bool      m_userSetTo   = false;
+    QDateTime m_minDt;
+    QDateTime m_maxDt;
+
 private slots:
     void onBrowse();
     void onApplyFormat();
@@ -77,5 +101,9 @@ private:
     void setStatus(const QString& text);
     void rebuildModelCols(const QStringList& cols);
     QDateTime parseAsctimeQt(const QString& s) const;
-    void parseAndAddRow(const QString& raw) const;
+    void parseAndAddRow(const QString& raw);
+    void rebuildColumnFiltersForm(const QStringList& cols);
+    void clearAllFilters();
+    void updateTimeControlsEnabled();
+    void maybeSeedTimeEditors();
 };

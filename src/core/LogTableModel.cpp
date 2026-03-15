@@ -77,6 +77,11 @@ QHash<QString, QString> LogTableModel::rowDict(int row) const {
     return m_rows[row].dict;
 }
 
+QDateTime LogTableModel::asctimeForRow(int row) const {
+    if (row < 0 || row >= m_rows.size()) return {};
+    return m_rows[row].asctime;
+}
+
 int LogTableModel::rowCount(const QModelIndex&) const {
     return m_rows.size();
 }

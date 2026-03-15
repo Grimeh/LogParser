@@ -2,22 +2,25 @@
 #include "core/LogTailer.h"
 #include "core/LogTableModel.h"
 #include "ui/FirstNewRowDelegate.h"
+#include "core/MultiFilterProxy.h"
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDateTimeEdit>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
-#include <QtLogging>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QComboBox>
-#include <QTableView>
-#include <QHeaderView>
-#include <QStandardItemModel>
-#include <QFileDialog>
-#include <QLabel>
-#include <QFileInfo>
 #include <QSortFilterProxyModel>
+#include <QStandardItemModel>
+#include <QTableView>
+#include <QVBoxLayout>
+#include <QtLogging>
 
 LogReaderTab::LogReaderTab(QWidget* parent)
     : QWidget(parent)
@@ -129,7 +132,7 @@ void LogReaderTab::buildHeaderRows(QWidget* parent) {
 void LogReaderTab::buildTable(QWidget* parent) {
     m_model = new LogTableModel(QStringList{"message"}, this);
     
-    m_proxy = new QSortFilterProxyModel(this);
+    m_proxy = new MultiFilterProxy(this);
     m_proxy->setSourceModel(m_model);
     m_proxy->setSortCaseSensitivity(Qt::CaseInsensitive);
     m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
@@ -159,14 +162,82 @@ void LogReaderTab::buildTable(QWidget* parent) {
 void LogReaderTab::buildFiltersPanel(QWidget* parent) {
     auto* panel = new QWidget(parent);
     auto* form  = new QFormLayout(panel);
-    form->setContentsMargins(0,6,0,6);
+    form->setContentsMargins(0, 6, 0, 6);
     form->setSpacing(6);
 
-    auto* notice = new QLabel("Filters panel.", panel);
-    notice->setStyleSheet("color:#a0a0a0;");
-    form->addRow(notice);
+    // Column regex filters
+    m_columnsContainer = new QWidget(panel);
+    m_columnsForm      = new QFormLayout(m_columnsContainer);
+    m_columnsForm->setContentsMargins(0,0,0,0);
+    m_columnsForm->setSpacing(6);
+
+    rebuildColumnFiltersForm(m_model->columns());
+    form->addRow(m_columnsContainer);
+
+    // Time range
+    auto* gridW = new QWidget(panel);
+    auto* grid  = new QGridLayout(gridW);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setHorizontalSpacing(8);
+    grid->setVerticalSpacing(6);
+
+    auto* lblFrom = new QLabel("Asctime from:");
+    auto* lblTo   = new QLabel("Asctime to:");
+
+    m_cbUseFrom = new QCheckBox("Use From", gridW);
+    m_cbUseTo   = new QCheckBox("Use To", gridW);
+
+    m_fromDt = new QDateTimeEdit(gridW);
+    m_toDt   = new QDateTimeEdit(gridW);
+    m_fromDt->setCalendarPopup(true);
+    m_toDt->setCalendarPopup(true);
+    m_fromDt->setDisplayFormat(m_datefmtQt);
+    m_toDt->setDisplayFormat(m_datefmtQt);
+
+    m_noTimeNotice = new QLabel("No asctime parsed; time filter disabled", gridW);
+    m_noTimeNotice->setStyleSheet("color:#e0a070;");
+    m_noTimeNotice->setVisible(false);
+
+    grid->addWidget(lblFrom, 0, 0, Qt::AlignRight|Qt::AlignVCenter);
+    grid->addWidget(m_cbUseFrom, 0, 1);
+    grid->addWidget(m_fromDt, 0, 2);
+    grid->setColumnStretch(3, 1);
+
+    grid->addWidget(lblTo, 1, 0, Qt::AlignRight|Qt::AlignVCenter);
+    grid->addWidget(m_cbUseTo, 1, 1);
+    grid->addWidget(m_toDt, 1, 2);
+    grid->addWidget(m_noTimeNotice, 1, 3);
+
+    form->addRow(gridW);
+
+    // wire time range
+    auto applyTime = [this]{
+        std::optional<QDateTime> f, t;
+        if (m_cbUseFrom->isChecked()) f = m_fromDt->dateTime();
+        if (m_cbUseTo->isChecked())   t = m_toDt->dateTime();
+        static_cast<MultiFilterProxy*>(m_proxy)->setTimeRange(f, t);
+    };
+    connect(m_cbUseFrom, &QCheckBox::toggled, this, [this, applyTime](bool){
+        m_userSetFrom = true; applyTime();
+    });
+    connect(m_cbUseTo, &QCheckBox::toggled, this, [this, applyTime](bool){
+        m_userSetTo = true; applyTime();
+    });
+    connect(m_fromDt, &QDateTimeEdit::dateTimeChanged, this, [this, applyTime](const QDateTime&){
+        m_userSetFrom = true; applyTime();
+    });
+    connect(m_toDt, &QDateTimeEdit::dateTimeChanged, this, [this, applyTime](const QDateTime&){
+        m_userSetTo = true; applyTime();
+    });
+
+    // --- Clear button ---
+    auto* btnClear = new QPushButton("Clear filters", panel);
+    connect(btnClear, &QPushButton::clicked, this, &LogReaderTab::clearAllFilters);
+    form->addRow(btnClear);
 
     static_cast<QVBoxLayout*>(layout())->addWidget(panel, 0);
+
+    updateTimeControlsEnabled();
 }
 
 void LogReaderTab::buildStatus(QWidget* parent) {
@@ -189,7 +260,7 @@ QDateTime LogReaderTab::parseAsctimeQt(const QString &s) const
     return QDateTime::fromString(s, m_datefmtQt);
 }
 
-void LogReaderTab::parseAndAddRow(const QString &raw) const {
+void LogReaderTab::parseAndAddRow(const QString &raw) {
     auto parsed = LogParser::parseLine(raw, m_compiled);
     if (!parsed) {
         // Continuation of previous line => append to previous line
@@ -210,8 +281,107 @@ void LogReaderTab::parseAndAddRow(const QString &raw) const {
         QDateTime asdt;
         if (parsed->contains("asctime")) {
             asdt = parseAsctimeQt(parsed->value("asctime"));
+            if (asdt.isValid()) {
+                if (!m_minDt.isValid() || asdt < m_minDt) m_minDt = asdt;
+                m_haveAnyDatetime = true;
+                if (!m_maxDt.isValid() || asdt > m_maxDt) m_maxDt = asdt;
+            }
         }
         m_model->addRow(*parsed, asdt);
+    }
+    maybeSeedTimeEditors();
+    updateTimeControlsEnabled();
+}
+
+void LogReaderTab::rebuildColumnFiltersForm(const QStringList &cols) {
+    while (m_columnsForm->rowCount() > 0)
+        m_columnsForm->removeRow(0);
+
+    m_showChecks.clear();
+    m_filterEdits.clear();
+    m_showChecks.reserve(cols.size());
+    m_filterEdits.reserve(cols.size());
+
+    for (int i = 0; i < cols.size(); ++i) {
+        const QString& name = cols[i];
+
+        auto* rowW = new QWidget(m_columnsContainer);
+        auto* h    = new QHBoxLayout(rowW);
+        h->setContentsMargins(0,0,0,0);
+        h->setSpacing(6);
+
+        auto* cbShow = new QCheckBox("Show", rowW);
+        cbShow->setChecked(true);
+        connect(cbShow, &QCheckBox::toggled, this, [this, i](bool on){
+            // Toggle column visibility on the VIEW side
+            m_table->setColumnHidden(i, !on);
+        });
+        m_showChecks.push_back(cbShow);
+
+        auto* edit = new QLineEdit(rowW);
+        edit->setPlaceholderText(QString("Regex for '%1'").arg(name));
+        connect(edit, &QLineEdit::textChanged, this, [this, i, edit](const QString& text){
+            // Validate regex; if invalid, color edit background red and clear filter
+            if (text.isEmpty()) {
+                edit->setStyleSheet("");
+                static_cast<MultiFilterProxy*>(m_proxy)->setFilterRegexForColumn(i, std::nullopt);
+                return;
+            }
+            QRegularExpression rx(text, QRegularExpression::CaseInsensitiveOption);
+            if (!rx.isValid()) {
+                edit->setStyleSheet("background: rgba(180,50,50,0.5);");
+                static_cast<MultiFilterProxy*>(m_proxy)->setFilterRegexForColumn(i, std::nullopt);
+            } else {
+                edit->setStyleSheet("");
+                static_cast<MultiFilterProxy*>(m_proxy)->setFilterRegexForColumn(i, rx);
+            }
+        });
+        m_filterEdits.push_back(edit);
+
+        h->addWidget(cbShow);
+        h->addWidget(edit);
+
+        m_columnsForm->addRow(new QLabel(name + ":"), rowW);
+    }
+}
+
+void LogReaderTab::clearAllFilters() {
+    for (auto* e : m_filterEdits) {
+        e->blockSignals(true);
+        e->clear();
+        e->setStyleSheet("");
+        e->blockSignals(false);
+    }
+    static_cast<MultiFilterProxy*>(m_proxy)->clearAllColumnFilters();
+
+    m_cbUseFrom->setChecked(false);
+    m_cbUseTo->setChecked(false);
+    static_cast<MultiFilterProxy*>(m_proxy)->setTimeRange(std::nullopt, std::nullopt);
+
+    setStatus("Filters cleared.");
+}
+
+void LogReaderTab::updateTimeControlsEnabled() {
+    const bool have = m_haveAnyDatetime;
+    m_cbUseFrom->setEnabled(have);
+    m_cbUseTo->setEnabled(have);
+    m_fromDt->setEnabled(have);
+    m_toDt->setEnabled(have);
+    m_noTimeNotice->setVisible(!have);
+}
+
+void LogReaderTab::maybeSeedTimeEditors() {
+    if (m_haveAnyDatetime) {
+        if (!m_userSetFrom && m_minDt.isValid()) {
+            m_fromDt->blockSignals(true);
+            m_fromDt->setDateTime(m_minDt);
+            m_fromDt->blockSignals(false);
+        }
+        if (!m_userSetTo && m_maxDt.isValid()) {
+            m_toDt->blockSignals(true);
+            m_toDt->setDateTime(m_maxDt);
+            m_toDt->blockSignals(false);
+        }
     }
 }
 
@@ -226,6 +396,7 @@ void LogReaderTab::rebuildModelCols(const QStringList &cols) {
         else                   hdr->setSectionResizeMode(i, QHeaderView::ResizeToContents);
 
     }
+    rebuildColumnFiltersForm(m_model->columns());
 }
 
 // ----- Slots -----
@@ -257,7 +428,12 @@ void LogReaderTab::onApplyFormat() {
     rebuildModelCols(m_compiled.columns);
     setStatus(QStringLiteral("Applied format. Columns: %1")
               .arg(m_compiled.columns.join(", ")));
-
+    rebuildColumnFiltersForm(m_model->columns());
+    m_haveAnyDatetime = false;
+    m_minDt = {}; m_maxDt = {};
+    m_userSetFrom = m_userSetTo = false;
+    updateTimeControlsEnabled();
+    static_cast<MultiFilterProxy*>(m_proxy)->setTimeRange(std::nullopt, std::nullopt);
     // Prefer sorting by asctime if present
     const int asCol = m_compiled.columns.indexOf("asctime");
     if (asCol >= 0) m_table->sortByColumn(asCol, Qt::AscendingOrder);
@@ -305,6 +481,11 @@ void LogReaderTab::onStop() {
 void LogReaderTab::onClear() {
     auto* m = qobject_cast<QStandardItemModel*>(m_table->model());
     if (m) m->removeRows(0, m->rowCount());
+    m_haveAnyDatetime = false;
+    m_minDt = {}; m_maxDt = {};
+    m_userSetFrom = m_userSetTo = false;
+    updateTimeControlsEnabled();
+    static_cast<MultiFilterProxy*>(m_proxy)->setTimeRange(std::nullopt, std::nullopt);
     setStatus("Cleared.");
 }
 

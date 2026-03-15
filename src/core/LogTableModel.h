@@ -25,6 +25,7 @@ public:
 
     // helpers
     QHash<QString, QString> rowDict(int row) const;
+    QDateTime asctimeForRow(int row) const;
 
     // Qt model
     int rowCount(const QModelIndex& parent = {}) const override;
