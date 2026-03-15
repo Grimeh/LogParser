@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
     applyDarkPalette(app);
 
     MainWindow w;
-    w.resize(1000, 700);
+    w.resize(1000, 1000);
     w.show();
 
     return app.exec();

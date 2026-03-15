@@ -92,6 +92,7 @@ private slots:
     void onPathTextChanged(const QString& text);
     void onTailNewLine(const QString& line);
     void onTailFileError(const QString& msg);
+    void onCellDoubleClicked(const QModelIndex& proxyIndex);
 
 private:
     void buildHeaderRows(QWidget* parent);

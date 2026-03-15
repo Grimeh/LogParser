@@ -3,6 +3,7 @@
 #include "core/LogTableModel.h"
 #include "ui/FirstNewRowDelegate.h"
 #include "core/MultiFilterProxy.h"
+#include "ui/MessageDialog.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -34,7 +35,7 @@ LogReaderTab::LogReaderTab(QWidget* parent)
     buildFiltersPanel(this);
     buildStatus(this);
 
-    m_compiled = LogParser::compileFormatToRegex("%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s");
+    m_compiled = LogParser::compileFormatToRegex("%(asctime)s | %(levelname)s | %(name)s | %(funcName)s | %(message)s");
 
     setStatus("Ready");
 }
@@ -83,7 +84,7 @@ void LogReaderTab::buildHeaderRows(QWidget* parent) {
         m_modeCombo->setCurrentText("py_logging_fmt");
 
         m_formatEdit = new QLineEdit(parent);
-        m_formatEdit->setText("%(asctime)s %(levelname)s %(name)s %(funcName)s %(message)s");
+        m_formatEdit->setText("%(asctime)s | %(levelname)s | %(name)s | %(funcName)s | %(message)s");
         m_formatEdit->setMinimumWidth(500);
 
         auto* lblDate = new QLabel("Datefmt:", parent);
@@ -156,7 +157,9 @@ void LogReaderTab::buildTable(QWidget* parent) {
             this, [delegate](int /*section*/, Qt::SortOrder /*order*/) {
                 delegate->setEnabled(true);
             });
-
+            
+    connect(m_table, &QTableView::doubleClicked,
+        this, &LogReaderTab::onCellDoubleClicked);
 }
 
 void LogReaderTab::buildFiltersPanel(QWidget* parent) {
@@ -544,4 +547,22 @@ void LogReaderTab::onTailNewLine(const QString &line) {
 void LogReaderTab::onTailFileError(const QString& msg) {
     setStatus(QStringLiteral("Tail error: %1").arg(msg));
 
+}
+
+void LogReaderTab::onCellDoubleClicked(const QModelIndex &proxyIndex) {   
+    if (!proxyIndex.isValid()) return;
+    const QModelIndex src = m_proxy->mapToSource(proxyIndex);
+
+    // Prefer the 'message' column if available
+    int msgCol = m_model->columns().indexOf("message");
+    QString text;
+    if (msgCol >= 0) {
+        const QModelIndex msgIdx = m_model->index(src.row(), msgCol);
+        text = m_model->data(msgIdx, Qt::DisplayRole).toString();
+    } else {
+        text = m_model->data(src, Qt::DisplayRole).toString();
+    }
+
+    MessageDialog dlg(text, this);
+    dlg.exec();
 }
