@@ -52,6 +52,10 @@ private:
 
     // JSON helpers
     void tryParseJsonFromRaw();
+    bool extractFirstJsonFragment(const QString& s,
+                                  int& outBegin, int& outEnd,
+                                  QJsonValue& outJson,
+                                  QString& error);
     void setTextFromJson(const QJsonValue& v, bool pretty);
     void rebuildTree(const QJsonValue& v);
 

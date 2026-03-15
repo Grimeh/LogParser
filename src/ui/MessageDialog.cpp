@@ -127,27 +127,110 @@ void MessageDialog::tryParseJsonFromRaw() {
     m_hasJson = false;
     m_fullJson = QJsonValue();
 
-    QJsonParseError err{};
-    const auto doc = QJsonDocument::fromJson(m_rawText.toUtf8(), &err);
-    if (err.error != QJsonParseError::NoError) {
-        // not JSON
-        m_status->setText(tr("Not JSON: %1").arg(err.errorString()));
-        m_btnPretty->setText(tr("Format as JSON"));
-        m_isPretty = false;
-        setFilterUiEnabled(false);
-        m_tabs->setTabEnabled(1, false);
-        return;
-    }
-    m_hasJson = true;
-    m_fullJson = (doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()));
-    m_status->setText(tr("JSON detected"));
-    setFilterUiEnabled(true);
-    m_tabs->setTabEnabled(1, true);
+    // Try to parse entire text as JSON
+    {
 
-    // show pretty in text if currently pretty is requested
-    if (m_isPretty) setTextFromJson(m_fullJson, /*pretty*/true);
-    // build tree on full json
-    rebuildTree(m_fullJson);
+        QJsonParseError err{};
+        const auto doc = QJsonDocument::fromJson(m_rawText.toUtf8(), &err);
+        if (err.error == QJsonParseError::NoError) {
+            m_hasJson = true;
+            m_fullJson = (doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()));
+            m_status->setText(tr("JSON detected"));
+            setFilterUiEnabled(true);
+            m_tabs->setTabEnabled(1, true);
+            
+            // show pretty in text if currently pretty is requested
+            if (m_isPretty) setTextFromJson(m_fullJson, /*pretty*/true);
+            // build tree on full json
+            rebuildTree(m_fullJson);
+            return;
+        }
+    }
+    // Fallback: find a JSON fragment inside the text
+    {
+        int b = -1, e = -1;
+        QJsonValue fragJson;
+        QString err;
+        if (extractFirstJsonFragment(m_rawText, b, e, fragJson, err)) {
+            m_hasJson = true;
+            m_fullJson = fragJson;
+            m_status->setText(tr("JSON fragment detected at %1..%2").arg(b).arg(e));
+            setFilterUiEnabled(true);
+            m_tabs->setTabEnabled(1, true);
+
+            if (m_isPretty) setTextFromJson(m_fullJson, /*pretty*/true);
+            rebuildTree(m_fullJson);
+            return;
+        } else {
+            // Neither whole text nor a fragment is JSON; keep features disabled.
+            m_status->setText(tr("Not JSON: %1").arg(err));
+            m_btnPretty->setText(tr("Format as JSON"));
+            m_isPretty = false;
+            setFilterUiEnabled(false);
+            m_tabs->setTabEnabled(1, false);
+        }
+    }
+}
+    
+bool MessageDialog::extractFirstJsonFragment(const QString &s, int &outBegin, int &outEnd, QJsonValue &outJson, QString &error) {
+    const int n = s.size();
+    auto isOpen = [](QChar ch){ return ch == '{' || ch == '['; };
+    auto closeOf = [](QChar open){ return (open == '{') ? '}' : ']'; };
+
+    for (int i = 0; i < n; ++i) {
+        if (!isOpen(s[i])) continue;
+
+        const QChar open = s[i];
+        const QChar close = closeOf(open);
+        int depth = 1;
+        bool inStr = false;
+        QChar quoteChar = QChar::Null;
+        bool esc = false;
+
+        for (int j = i + 1; j < n; ++j) {
+            const QChar ch = s[j];
+
+            if (inStr) {
+                if (esc) {
+                    esc = false;
+                } else if (ch == '\\') {
+                    esc = true;
+                } else if (ch == quoteChar) {
+                    inStr = false;
+                }
+                continue;
+            }
+
+            // Not inside a string:
+            if (ch == '"' || ch == '\'') {
+                inStr = true;
+                quoteChar = ch;
+                continue;
+            }
+            if (ch == open) {
+                ++depth;
+            } else if (ch == close) {
+                --depth;
+                if (depth == 0) {
+                    // Candidate fragment [i..j]
+                    const QString frag = s.mid(i, j - i + 1);
+                    QJsonParseError err{};
+                    const auto doc = QJsonDocument::fromJson(frag.toUtf8(), &err);
+                    if (err.error == QJsonParseError::NoError) {
+                        outBegin = i;
+                        outEnd   = j;
+                        outJson  = doc.isArray() ? QJsonValue(doc.array())
+                                                 : QJsonValue(doc.object());
+                        return true;
+                    }
+                    // If this exact bracketed block isn't JSON, break and continue outer loop
+                    break;
+                }
+            }
+        }
+    }
+    error = tr("No valid JSON fragment found");
+    return false;
 }
 
 void MessageDialog::setTextFromJson(const QJsonValue& v, bool pretty) {
@@ -394,18 +477,30 @@ bool MessageDialog::evalJsonPath(const QJsonValue& root, const QString& expr, QJ
 // UI actions
 void MessageDialog::onTogglePretty() {
     if (!m_hasJson) {
-        // Try formatting current text as JSON to enable features
-        if (!m_isPretty) {
-            QJsonParseError err{};
-            const auto doc = QJsonDocument::fromJson(m_edit->toPlainText().toUtf8(), &err);
-            if (err.error != QJsonParseError::NoError) {
+        // Try full text first
+        QJsonParseError err{};
+        auto doc = QJsonDocument::fromJson(m_edit->toPlainText().toUtf8(), &err);
+        if (err.error != QJsonParseError::NoError) {
+            // Try fragment extraction
+            int b = -1, e = -1;
+            QJsonValue fragJson;
+            QString ferr;
+            if (!extractFirstJsonFragment(m_edit->toPlainText(), b, e, fragJson, ferr)) {
                 m_status->setText(tr("Not valid JSON: %1").arg(err.errorString()));
                 return;
             }
+            // Use the detected fragment
+            m_hasJson = true;
+            m_fullJson = fragJson;
+            setFilterUiEnabled(true);
+            m_tabs->setTabEnabled(1, true);
+            m_status->setText(tr("JSON fragment detected at %1..%2").arg(b).arg(e));
+        } else {
             m_hasJson = true;
             m_fullJson = (doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()));
             setFilterUiEnabled(true);
             m_tabs->setTabEnabled(1, true);
+            m_status->setText(tr("JSON detected"));
         }
     }
 
