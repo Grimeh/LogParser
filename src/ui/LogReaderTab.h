@@ -102,9 +102,10 @@ private:
     void setStatus(const QString& text);
     void rebuildModelCols(const QStringList& cols);
     QDateTime parseAsctimeQt(const QString& s) const;
-    void parseAndAddRow(const QString& raw);
+    void parseAndAddRow(const QString& raw, const bool& emitDataAppend);
     void rebuildColumnFiltersForm(const QStringList& cols);
     void clearAllFilters();
     void updateTimeControlsEnabled();
     void maybeSeedTimeEditors();
+    bool rowIsError(const QHash<QString, QString>& dict) const;
 };

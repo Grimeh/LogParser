@@ -263,7 +263,7 @@ QDateTime LogReaderTab::parseAsctimeQt(const QString &s) const
     return QDateTime::fromString(s, m_datefmtQt);
 }
 
-void LogReaderTab::parseAndAddRow(const QString &raw) {
+void LogReaderTab::parseAndAddRow(const QString &raw, const bool& emitDataAppend) {
     auto parsed = LogParser::parseLine(raw, m_compiled);
     if (!parsed) {
         // Continuation of previous line => append to previous line
@@ -278,6 +278,7 @@ void LogReaderTab::parseAndAddRow(const QString &raw) {
                                 ? "message" : m_model->columns().last();
             dict.insert(key, raw);
             m_model->addRow(dict);
+            if (emitDataAppend) emit dataAppended(false);
         }
     } else {
         // parse asctime if present
@@ -291,6 +292,10 @@ void LogReaderTab::parseAndAddRow(const QString &raw) {
             }
         }
         m_model->addRow(*parsed, asdt);
+        if (emitDataAppend) {
+            const bool isErr = rowIsError(*parsed);
+            emit dataAppended(isErr);
+        }
     }
     maybeSeedTimeEditors();
     updateTimeControlsEnabled();
@@ -386,6 +391,11 @@ void LogReaderTab::maybeSeedTimeEditors() {
             m_toDt->blockSignals(false);
         }
     }
+}
+
+bool LogReaderTab::rowIsError(const QHash<QString, QString> &dict) const {
+    const QString lvl = dict.value("levelname", dict.value("level")).toUpper();
+    return (lvl == "ERROR" || lvl == "CRITICAL" || lvl == "FATAL");
 }
 
 void LogReaderTab::rebuildModelCols(const QStringList &cols) {
@@ -518,7 +528,7 @@ void LogReaderTab::onReloadAll() {
     while (!in.atEnd()) {
         const QString raw = in.readLine();
         if (raw.isNull()) break;
-        parseAndAddRow(raw);
+        parseAndAddRow(raw, false);
         ++count;
     }
     f.close();
@@ -541,7 +551,7 @@ void LogReaderTab::onPathTextChanged(const QString& text) {
 
 void LogReaderTab::onTailNewLine(const QString &line) {
     const QString raw = line.endsWith('\n') ? line.chopped(1) : line;
-    parseAndAddRow(raw);
+    parseAndAddRow(raw, true);
 }
 
 void LogReaderTab::onTailFileError(const QString& msg) {
