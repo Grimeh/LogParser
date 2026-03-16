@@ -39,7 +39,7 @@ LogReaderTab::LogReaderTab(QWidget* parent)
     buildFiltersPanel(this);
     buildStatus(this);
 
-    m_compiled = LogParser::compileFormatToRegex("%(asctime)s | %(levelname)s | %(name)s | %(funcName)s | %(message)s");
+    LogReaderTab::onApplyFormat();
 
     setStatus("Ready");
 }
