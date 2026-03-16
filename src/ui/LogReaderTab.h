@@ -93,6 +93,7 @@ private slots:
     void onTailNewLine(const QString& line);
     void onTailFileError(const QString& msg);
     void onCellDoubleClicked(const QModelIndex& proxyIndex);
+    void copySelection();
 
 private:
     void buildHeaderRows(QWidget* parent);

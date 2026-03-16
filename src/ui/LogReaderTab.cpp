@@ -6,17 +6,21 @@
 #include "ui/MessageDialog.h"
 
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDateTimeEdit>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
 #include <QTableView>
@@ -160,6 +164,9 @@ void LogReaderTab::buildTable(QWidget* parent) {
             
     connect(m_table, &QTableView::doubleClicked,
         this, &LogReaderTab::onCellDoubleClicked);
+
+    auto* scCopy = new QShortcut(QKeySequence::Copy, m_table);
+    connect(scCopy, &QShortcut::activated, this, &LogReaderTab::copySelection);
 }
 
 void LogReaderTab::buildFiltersPanel(QWidget* parent) {
@@ -575,4 +582,44 @@ void LogReaderTab::onCellDoubleClicked(const QModelIndex &proxyIndex) {
 
     MessageDialog dlg(text, this);
     dlg.exec();
+}
+
+void LogReaderTab::copySelection() {
+    if (!m_table || !m_table->selectionModel()) return;
+
+    const QModelIndexList indexes = m_table->selectionModel()->selectedIndexes();
+    if (indexes.isEmpty()) return;
+
+    // Sort by row, then column (view/proxy coordinates)
+    QModelIndexList sorted = indexes;
+    std::sort(sorted.begin(), sorted.end(),
+              [](const QModelIndex& a, const QModelIndex& b){
+                  if (a.row() == b.row()) return a.column() < b.column();
+                  return a.row() < b.row();
+              });
+
+    // Group by row -> join columns with tabs; join rows with newlines
+    QStringList lines;
+    int currentRow = sorted.first().row();
+    QStringList currentLineCells;
+
+    for (const QModelIndex& idx : sorted) {
+        if (idx.row() != currentRow) {
+            // flush previous row
+            lines << currentLineCells.join('\t');
+            currentLineCells.clear();
+            currentRow = idx.row();
+        }
+        const QString cell = m_proxy->data(idx, Qt::DisplayRole).toString();
+        currentLineCells << cell;
+    }
+    // flush last row
+    lines << currentLineCells.join('\t');
+
+    // Put on clipboard
+    QGuiApplication::clipboard()->setText(lines.join('\n'));
+
+    setStatus(tr("Copied %1 cell%2")
+              .arg(sorted.size())
+              .arg(sorted.size()==1 ? "" : "s"));
 }
