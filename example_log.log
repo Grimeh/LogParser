@@ -1,0 +1,18 @@
+2026-01-29 23:08:09 | DEBUG | __main__ | main | Lorem ipsum dolor sit amet
+2026-01-29 23:08:23 | DEBUG | __main__ | main | This is a debug message. It's quite long, very long indeed, long, long ,loooooooooooooooooong. It just goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on. Long! Blablablablablabla bablabla bablabl balblblablbl blablbla. Won't fit on one line, need to open the message dialog to view this.
+2026-01-29 23:08:24 | INFO | my_module | my_fun | Application started.
+2026-01-29 23:08:25 | WARNING | my_module | my_fun | Something might be off...
+2026-01-29 23:08:28 | ERROR | __main__ | main | An error occurred.
+2026-01-29 23:08:29 | ERROR | __main__ | main | Exception with traceback captured automatically.
+Traceback (most recent call last):
+  File "C:\my\amazing\path\dummy.py", line 24, in main
+    1 / 0
+    ~~^~~
+ZeroDivisionError: division by zero
+2026-01-30 17:18:23 | DEBUG | __main__ | main | {"a": "foo", "b": ["bar", "hej"], "c": 2}
+2026-01-30 18:20:26 | DEBUG | __main__ | main | This is a debug message (won't show when level=INFO). this is quite long, very long indeed, long, long ,loooooooooooooooooong. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
+2026-01-30 18:20:27 | INFO | my_module | my_fun | Application started.
+2026-01-30 18:20:28 | WARNING | my_module | my_fun | Something might be off...
+2026-01-30 18:20:30 | DEBUG | __main__ | main | {"a": "foo", "b": ["bar", "hej"], "c": 2}
+2026-01-30 18:21:22 | DEBUG | __main__ | main | a bit of text first is fine: {"a": "foo", "b": ["bar", "hej"], "c": 2}
+2026-01-30 18:21:26 | DEBUG | __main__ | main | {"a": "foo", "b": ["bar", "hej"], "c": 2, "d": true, "e": 3.14, "f":null}
