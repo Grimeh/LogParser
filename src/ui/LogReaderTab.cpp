@@ -57,6 +57,10 @@ void LogReaderTab::updateLastSeenRow() {
     m_model->setLastSeenRow(m_model->rowCount() - 1);
 }
 
+void LogReaderTab::setPath(const QString &path) {
+    m_pathEdit->setText(path);
+}
+
 void LogReaderTab::buildHeaderRows(QWidget* parent) {
     // Row 1: File path + Browse
     {

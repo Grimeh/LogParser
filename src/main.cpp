@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QtLogging>
 #include "app/MainWindow.h"
+#include <iostream>
 
 static void applyDarkPalette(QApplication& app) {
     app.setStyle(QStyleFactory::create("Fusion"));
@@ -45,6 +46,12 @@ int main(int argc, char* argv[]) {
     MainWindow w;
     w.resize(1000, 1000);
     w.show();
+
+    // initiate tabs with command line input paths
+    if (argc > 1) {
+        char** pathList = &argv[1];
+        w.openLogList(argc-1, pathList);
+    }
 
     return app.exec();
 }

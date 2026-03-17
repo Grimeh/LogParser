@@ -23,6 +23,7 @@ public:
     ~LogReaderTab() override;
 
     void updateLastSeenRow();
+    void setPath(const QString& path);
 
 signals:
     void pathChanged(const QString& baseName);

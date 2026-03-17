@@ -12,7 +12,7 @@
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("My Log Reader");
+    setWindowTitle("LogParser");
 
     m_tabs = new TabsWidget(this);
     setCentralWidget(m_tabs);
@@ -28,6 +28,14 @@ MainWindow::MainWindow(QWidget* parent)
 
     // initial tab
     createNewTab();
+}
+
+void MainWindow::openLogList(int listSize, char *pathList[]) {
+    if (listSize == 0) return;
+    for (int i=0; i < listSize; ++i){
+        if (i > 0) MainWindow::createNewTab();
+        MainWindow::currentTab()->setPath(QString::fromLocal8Bit(pathList[i]));
+    }
 }
 
 void MainWindow::createNewTab() {
