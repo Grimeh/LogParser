@@ -19,6 +19,7 @@
 #include <QTextCharFormat>
 #include <QTextEdit>
 #include <QColor>
+#include <iostream>
 
 MessageDialog::MessageDialog(const QString& text, QWidget* parent)
     : QDialog(parent), m_rawText(text)
@@ -234,7 +235,12 @@ bool MessageDialog::extractFirstJsonFragment(const QString &s, int &outBegin, in
 }
 
 void MessageDialog::setTextFromJson(const QJsonValue& v, bool pretty) {
-    if (!v.isArray() && !v.isObject()) return;
+    if (v.isBool()) { m_edit->setPlainText(QVariant(v.toBool()).toString()); return;}
+    if (v.isDouble()) {m_edit->setPlainText(QString::number(v.toDouble())); return;}
+    if (v.isString()) {m_edit->setPlainText(v.toString()); return;}
+    if (v.isNull()) {m_edit->setPlainText(QString("null")); return;}
+    if (v.isUndefined()) return;
+
     QJsonDocument doc(v.toObject());
     if (v.isArray()) doc = QJsonDocument(v.toArray());
     const QByteArray out = pretty ? doc.toJson(QJsonDocument::Indented)
