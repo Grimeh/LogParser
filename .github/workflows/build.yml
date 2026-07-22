@@ -1,0 +1,25 @@
+name: build
+on:
+  push:
+    branches: ["main"]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.10.2'
+        arch: 'win64_mingw'
+    - name: Configure CMake
+      run: cmake --preset mingw-release
+    - name: Build
+      run: cmake --build --preset mingw-release -j
+    - name: Package
+      run: cmake --install build/mingw-release
+    - name: Upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: LogViewer-win64-release
+        path: install/mingw-release/bin
