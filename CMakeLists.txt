@@ -34,7 +34,7 @@ qt_add_executable(log_parser
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     # Set appropriate entry point to prevent console window opening
-    set_property(TARGET main PROPERTY WIN32_EXECUTABLE true)
+    set_property(TARGET log_parser PROPERTY WIN32_EXECUTABLE true)
 endif()
 
 # Link Qt Widgets to your executable
