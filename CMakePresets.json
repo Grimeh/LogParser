@@ -23,7 +23,7 @@
     }
   ],
   "buildPresets": [
-    { "name": "debug", "configurePreset": "mingw-debug" },
-    { "name": "release", "configurePreset": "mingw-release" }
+    { "name": "mingw-debug", "configurePreset": "mingw-debug" },
+    { "name": "mingw-release", "configurePreset": "mingw-release" }
   ]
 }
